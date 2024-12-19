@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from openai import OpenAI
+import json
 
 app = FastAPI(title="Loyalty Customer Analysis Service")
 
@@ -34,99 +35,130 @@ class CustomerAnalysisResponse(BaseModel):
     generated_output: str
     structured_data: Dict
 
+def construct_system_prompt() -> str:
+    return """
+You are an expert in customer segmentation and loyalty program analysis. 
+Analyze the provided company's customer base and recommend loyalty program strategies.
+
+Consider:
+1. Customer demographics and behavior patterns
+2. Purchase frequency and value
+3. Channel preferences and engagement levels
+4. Loyalty program preferences
+5. Competitive context (if provided)
+
+Provide your response in two parts:
+1. A detailed analysis in natural language
+2. A structured JSON object containing customer segments with this exact schema:
+{
+    "customer_segments": [
+        {
+            "name": "Segment Name",
+            "size_percentage": 25.0,
+            "characteristics": ["characteristic1", "characteristic2"],
+            "preferred_rewards": ["reward1", "reward2"],
+            "engagement_level": "High/Medium/Low",
+            "lifetime_value": "$X,XXX+"
+        }
+    ]
+}
+
+Separate the two parts with [JSON_START] and [JSON_END] markers.
+"""
+
+def construct_user_prompt(
+    company_name: str,
+    competitor_analysis: Optional[str] = None,
+    existing_output: Optional[str] = None,
+    feedback: Optional[str] = None
+) -> str:
+    prompt = f"Please analyze the customer segments for {company_name}."
+    
+    if competitor_analysis:
+        prompt += f"\n\nConsider this competitor analysis: {competitor_analysis}"
+    
+    if existing_output and feedback:
+        prompt += f"""
+\n\nPrevious analysis: {existing_output}
+\nPlease refine the analysis based on this feedback: {feedback}
+"""
+    
+    return prompt
+
+def extract_json_from_text(text: str) -> dict:
+    try:
+        start_marker = "[JSON_START]"
+        end_marker = "[JSON_END]"
+        json_str = text[text.find(start_marker) + len(start_marker):text.find(end_marker)].strip()
+        return json.loads(json_str)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse structured data from response: {str(e)}"
+        )
+
 def generate_customer_analysis(
     company_name: str,
     competitor_analysis: Optional[str] = None,
-    feedback: str = ""
-) -> tuple[str, List[CustomerSegment]]:
-    """Mock function to simulate OpenAI API call for customer analysis"""
+    existing_output: Optional[str] = None,
+    feedback: Optional[str] = None
+) -> tuple[str, dict]:
+    """Generate customer analysis using OpenAI's API"""
     try:
-        # In a real implementation, this would call OpenAI's API
-        # completion = client.chat.completions.create(
-        #     model="gpt-4",
-        #     messages=[
-        #         {"role": "system", "content": "You are a customer analysis expert..."}
-        #         {"role": "user", "content": f"Analyze customer segments for {company_name}..."}
-        #     ]
-        # )
+        # Create completion using OpenAI
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": construct_system_prompt()},
+                {"role": "user", "content": construct_user_prompt(
+                    company_name,
+                    competitor_analysis,
+                    existing_output,
+                    feedback
+                )}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
         
-        # Mock response
-        generated_text = f"Customer Analysis for {company_name}:\n\n"
-        generated_text += "1. Overview of Customer Base\n"
-        generated_text += "2. Key Customer Segments\n"
-        generated_text += "3. Loyalty Program Engagement Patterns\n"
+        # Extract the response text
+        full_response = response.choices[0].message.content
         
-        if competitor_analysis:
-            generated_text += "\n4. Competitive Context:\n"
-            generated_text += "Based on competitor analysis, our customers show..."
-
-        # Mock customer segments
-        segments = [
-            CustomerSegment(
-                name="Premium Loyalists",
-                size_percentage=15.0,
-                characteristics=[
-                    "High-frequency shoppers",
-                    "Premium product preference",
-                    "Long-term customers"
-                ],
-                preferred_rewards=[
-                    "Exclusive early access",
-                    "Premium service upgrades",
-                    "VIP events"
-                ],
-                engagement_level="High",
-                lifetime_value="$5000+"
-            ),
-            CustomerSegment(
-                name="Value Seekers",
-                size_percentage=40.0,
-                characteristics=[
-                    "Price-sensitive",
-                    "Regular promotions usage",
-                    "Medium purchase frequency"
-                ],
-                preferred_rewards=[
-                    "Cash back",
-                    "Discount offers",
-                    "Points multipliers"
-                ],
-                engagement_level="Medium",
-                lifetime_value="$1000-3000"
-            )
-        ]
+        # Split into analysis and structured data
+        analysis = full_response[:full_response.find("[JSON_START]")].strip()
+        structured_data = extract_json_from_text(full_response)
         
-        return generated_text, segments
+        return analysis, structured_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate", response_model=CustomerAnalysisResponse)
 async def generate_analysis(request: CustomerAnalysisRequest):
-    # Extract relevant data
+    # Extract data from request
     competitor_analysis = (
         request.previous_data.competitor_analysis
         if request.previous_data
         else None
     )
-    feedback = (
-        request.current_prompt_data.user_feedback
-        if request.current_prompt_data
-        else ""
-    )
+    
+    existing_output = None
+    feedback = None
+    if request.current_prompt_data:
+        existing_output = request.current_prompt_data.existing_generated_output
+        feedback = request.current_prompt_data.user_feedback
     
     # Generate analysis
-    generated_text, segments = generate_customer_analysis(
+    generated_text, structured_data = generate_customer_analysis(
         request.company_name,
         competitor_analysis,
+        existing_output,
         feedback
     )
     
     # Prepare response
     return CustomerAnalysisResponse(
         generated_output=generated_text,
-        structured_data={
-            "customer_segments": [segment.dict() for segment in segments]
-        }
+        structured_data=structured_data
     )
 
 if __name__ == "__main__":

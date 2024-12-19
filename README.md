@@ -1,6 +1,6 @@
 # Loyalty Customer Analysis Service
 
-This FastAPI service generates customer segment analysis for loyalty programs using OpenAI's GPT models.
+This FastAPI service generates customer segment analysis for loyalty programs using OpenAI's GPT-4 model.
 
 ## Setup
 
@@ -49,10 +49,10 @@ Example request:
 {
   "company_name": "Example Corp",
   "previous_data": {
-    "competitor_analysis": "Previous competitor analysis..."
+    "competitor_analysis": "Competitor analysis details..."
   },
   "current_prompt_data": {
-    "existing_generated_output": "Previous analysis...",
+    "existing_generated_output": "Previous customer analysis...",
     "user_feedback": "Focus more on high-value segments"
   },
   "other_input_data": {}
@@ -62,7 +62,7 @@ Example request:
 Example response:
 ```json
 {
-  "generated_output": "Customer Analysis for Example Corp...",
+  "generated_output": "Customer Analysis for Example Corp...\n\n1. Customer Base Overview...\n2. Key Segments...\n3. Loyalty Program Recommendations...",
   "structured_data": {
     "customer_segments": [
       {
@@ -70,12 +70,10 @@ Example response:
         "size_percentage": 15.0,
         "characteristics": [
           "High-frequency shoppers",
-          "Premium product preference",
-          "Long-term customers"
+          "Premium product preference"
         ],
         "preferred_rewards": [
           "Exclusive early access",
-          "Premium service upgrades",
           "VIP events"
         ],
         "engagement_level": "High",
@@ -86,16 +84,22 @@ Example response:
 }
 ```
 
-## Development
+## Key Features
 
-- The service uses FastAPI for the API framework
-- OpenAI's GPT models for generating customer analysis
-- Pydantic for data validation
+- Uses OpenAI's GPT-4 model for analysis
+- Provides both narrative analysis and structured segment data
+- Integrates competitor analysis context
+- Supports iterative refinement through feedback
+- Input validation using Pydantic
+- Error handling and API monitoring
 
 ## Environment Variables
 
 - `OPENAI_API_KEY`: Your OpenAI API key (required)
 
-## Note
+## Notes
 
-This is a basic implementation. The OpenAI API call is currently mocked. To use real OpenAI API calls, uncomment and modify the relevant code in the `generate_customer_analysis` function.
+- The service uses GPT-4 by default. You can modify the `model` parameter in `generate_customer_analysis()` to use a different model.
+- The response includes both a detailed text analysis and structured JSON data about customer segments.
+- The system prompt is designed to provide consistent, structured analysis focusing on customer segmentation and loyalty program strategies.
+- Previous analysis and feedback can be provided to refine and improve the analysis.
